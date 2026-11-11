@@ -1,0 +1,69 @@
+name: shared_database
+description: >
+  Installable host app and importable library — shared on-device SQLite with
+  collection CRUD for your other Flutter apps on Android and Windows.
+version: 1.0.0+1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.7
+  flutter: '>=3.44.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_native_splash: ^2.4.7
+  provider: ^6.1.5
+  cupertino_icons: ^2.0.0
+  plugin_platform_interface: ^2.1.8
+  uuid: ^4.5.1
+  shared_database_android:
+    path: ./shared_database_android
+  shared_database_windows:
+    path: ./shared_database_windows
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/splash.png
+    - assets/app_icon.png
+
+  plugin:
+    platforms:
+      android:
+        default_package: shared_database_android
+      windows:
+        default_package: shared_database_windows
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  windows:
+    generate: true
+    image_path: assets/app_icon.png
+    icon_size: 256
+  image_path: assets/app_icon.png
+  adaptive_icon_background: "#0F172A"
+  adaptive_icon_foreground: assets/app_icon.png
+
+flutter_native_splash:
+  color: "#0F172A"
+  image: assets/splash.png
+  color_dark: "#0F172A"
+  image_dark: assets/splash.png
+  android: true
+  ios: false
+  web: false
+  android_gravity: center
+  fullscreen: true
+  android_12:
+    color: "#0F172A"
+    image: assets/splash.png
+    color_dark: "#0F172A"
+    image_dark: assets/splash.png
+    icon_background_color: "#0F172A"

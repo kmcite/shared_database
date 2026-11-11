@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android 11+: allow this app to find the host ContentProvider. -->
+    <queries>
+        <provider android:authorities="dev.loner.shared_database" />
+    </queries>
+
+</manifest>
