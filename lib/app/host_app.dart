@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:shared_database/shared_database.dart';
 
-import 'brand/brand.dart';
+import 'features/shell/brand.dart';
 import 'features/shell/app_host.dart';
-import 'theme/app_theme.dart';
+import 'features/shell/app_theme.dart';
 
 class SharedDatabaseHostApp extends StatefulWidget {
   const SharedDatabaseHostApp({super.key});
@@ -43,12 +43,11 @@ class _SharedDatabaseHostAppState extends State<SharedDatabaseHostApp> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
-      final seed = AppAccent.teal.seed;
       return MaterialApp(
         title: Brand.appName,
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(seed),
-        darkTheme: AppTheme.dark(seed),
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
         home: _error != null
             ? BrandSplashError(message: _error!, onRetry: _start)
             : const BrandSplashLoading(),

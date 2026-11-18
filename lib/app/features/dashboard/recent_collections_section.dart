@@ -1,14 +1,13 @@
 import 'dart:math' as math;
 
+import 'package:any/any.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_database/shared_database.dart';
 
-import '../../utils/app_accent.dart';
-import '../../utils/date_format.dart';
-import '../../utils/package_label.dart';
-import '../../widgets/common.dart';
-import '../../widgets/liquid.dart';
-import '../collection/collection_page.dart';
+import '../../models/date_format.dart';
+import '../../models/package_label.dart';
+import '../widgets/widgets.dart';
+import '../../commands/navigation_commands.dart';
 
 /// Recently created collections — timeline strip + mosaic cards.
 class RecentCollectionsSection extends StatelessWidget {
@@ -335,10 +334,8 @@ class _CollectionMosaicCardState extends State<_CollectionMosaicCard> {
   bool _pressed = false;
 
   void _open() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CollectionPage(collection: widget.collection),
-      ),
+    context.call(
+      PushCollectionRouteCommand(widget.collection),
     );
   }
 
@@ -360,18 +357,11 @@ class _CollectionMosaicCardState extends State<_CollectionMosaicCard> {
         scale: _pressed ? 0.98 : 1,
         duration: const Duration(milliseconds: 120),
         child: DecoratedBox(
-          decoration: Liquid.panel(
+          decoration: Liquid.panelAccent(
             context,
+            accent: accent,
             radius: widget.featured ? 20 : 16,
-            tint: Color.alphaBlend(
-              accent.withValues(alpha: 0.1),
-              scheme.surfaceContainerLow,
-            ),
-            elevated: widget.featured,
-          ).copyWith(
-            border: Border.all(
-              color: accent.withValues(alpha: widget.featured ? 0.4 : 0.22),
-            ),
+            featured: widget.featured,
           ),
           child: Padding(
             padding: EdgeInsets.all(widget.dense ? 12 : 16),

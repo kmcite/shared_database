@@ -1,25 +1,7 @@
-/// Keys in the shared preferences store.
+/// Keys and values in the shared preferences store — mutated by commands.
 class PreferencesState {
-  const PreferencesState({
-    this.keys = const [],
-    this.loading = true,
-    this.error,
-  });
-
-  final List<String> keys;
-  final bool loading;
-  final String? error;
-
-  PreferencesState copyWith({
-    List<String>? keys,
-    bool? loading,
-    String? error,
-    bool clearError = false,
-  }) {
-    return PreferencesState(
-      keys: keys ?? this.keys,
-      loading: loading ?? this.loading,
-      error: clearError ? null : (error ?? this.error),
-    );
-  }
+  List<String> keys = [];
+  Map<String, String?> values = {};
+  bool loading = true;
+  String? error;
 }

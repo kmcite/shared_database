@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0
+
+### Changed
+
+- **Host console layout** — `features/`, `commands/`, `states/`, and `repositories/` only; removed legacy `pages/`, `widgets/`, `utils/`, Provider shell, and duplicate `*_page` stubs.
+- **Repositories** — split into `CollectionsRepository`, `PreferencesRepository`, and `BackupRepository` behind a slim `DatabaseRepository` facade; `RecordsRepository` scopes watch/CRUD per collection.
+- **Navigation** — `AppRouter` under `features/router/` drives `MaterialApp`, stack sync from `NavigationState`, overlays (confirm/prompt/shell “More”), and snackbars from `FeedbackState`.
+- **Screens** — feature entrypoints renamed `*_screen.dart`; shared UI lives in `features/widgets/`.
+
 ## 1.3.0
 
 ### Added
@@ -10,7 +19,7 @@
 
 ### Changed
 
-- **Navigation** — drawer / rail / bottom bar with `ShellNavigationState` and tab commands instead of Provider-scoped shell widgets.
+- **Navigation** — drawer / rail / bottom bar with shell tab commands instead of Provider-scoped shell widgets.
 - **Branding** — refreshed launcher icons and splash assets.
 
 ## 1.2.0

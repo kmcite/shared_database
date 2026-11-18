@@ -3,6 +3,7 @@ import 'package:shared_database/shared_database.dart';
 
 import '../repositories/database_repository.dart';
 import '../states/console_state.dart';
+import 'ref_mutate.dart';
 import 'preferences_commands.dart';
 import 'settings_commands.dart';
 
@@ -24,15 +25,14 @@ class ReloadConsoleCommand extends Command {
 
   @override
   Future<void> call(Ref ref) async {
-    final current = ref.of<ConsoleState>();
-    if (showSpinner && !current.hasData) {
-      ref.call<ConsoleState>((_) => current.copyWith(loading: true));
+    if (showSpinner && !ref.of<ConsoleState>().hasData) {
+      ref.mutate<ConsoleState>((s) => s.loading = true);
     }
     try {
       final db = ref.get<DatabaseRepository>();
       final results = await Future.wait([
-        db.collectionsDetailed(),
-        db.preferenceKeys(),
+        db.collections.listDetailed(),
+        db.preferences.keys(),
       ]);
       final detailed = results[0] as List<CollectionInfo>;
       final prefKeys = results[1] as List<String>;
@@ -53,32 +53,19 @@ class ReloadConsoleCommand extends Command {
           .toList()
         ..sort((a, b) => a.packageName.compareTo(b.packageName));
 
-      ref.call<ConsoleState>(
-        (_) => current.copyWith(
-          collections: detailed,
-          apps: apps,
-          preferenceCount: prefKeys.length,
-          hasData: true,
-          loading: false,
-          clearError: true,
-        ),
-      );
+      ref.mutate<ConsoleState>((s) {
+        s.collections = detailed;
+        s.apps = apps;
+        s.preferenceCount = prefKeys.length;
+        s.hasData = true;
+        s.loading = false;
+        s.error = null;
+      });
     } catch (e) {
-      ref.call<ConsoleState>(
-        (_) => current.copyWith(
-          error: e.toString(),
-          loading: false,
-        ),
-      );
+      ref.mutate<ConsoleState>((s) {
+        s.error = e.toString();
+        s.loading = false;
+      });
     }
-  }
-}
-
-class ConsoleResumedCommand extends Command {
-  const ConsoleResumedCommand();
-
-  @override
-  Future<void> call(Ref ref) async {
-    await const ReloadConsoleCommand().call(ref);
   }
 }

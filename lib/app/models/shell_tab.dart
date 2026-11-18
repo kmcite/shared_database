@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../features/backup/backup_page.dart';
-import '../features/collections/collections_page.dart';
-import '../features/dashboard/dashboard_page.dart';
-import '../features/preferences/preferences_page.dart';
-import '../features/search/search_page.dart';
-import '../features/settings/settings_page.dart';
+import '../features/collections/collections_screen.dart';
+import '../features/dashboard/dashboard_screen.dart';
+import '../features/preferences/preferences_screen.dart';
+import '../features/search/search_screen.dart';
+import '../features/settings/settings_screen.dart';
 
 /// Main shell tabs — [index] matches [PageView] order.
 enum ShellTab {
@@ -28,9 +27,8 @@ enum ShellTab {
     Icons.tune_outlined,
     Icons.tune_rounded,
   ),
-  backup(4, 'Backup', Icons.backup_outlined, Icons.backup_rounded),
   settings(
-    5,
+    4,
     'Settings',
     Icons.settings_outlined,
     Icons.settings_rounded,
@@ -55,12 +53,11 @@ enum ShellTab {
     return null;
   }
 
-  static const List<Widget> pages = [
-    DashboardPage(),
-    CollectionsPage(),
-    SearchPage(),
-    PreferencesPage(),
-    BackupPage(),
-    SettingsPage(),
+  static const List<Widget> screens = [
+    DashboardScreen(),
+    CollectionsScreen(),
+    SearchScreen(),
+    PreferencesScreen(),
+    SettingsScreen(),
   ];
 }

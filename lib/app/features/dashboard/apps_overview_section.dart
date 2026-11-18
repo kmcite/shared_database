@@ -1,13 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:any/any.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_database/shared_database.dart';
 
-import '../../utils/app_accent.dart';
-import '../../utils/package_label.dart';
-import '../../widgets/common.dart';
-import '../../widgets/liquid.dart';
-import '../app_collections/app_collections_page.dart';
+import '../../models/package_label.dart';
+import '../widgets/widgets.dart';
+import '../../commands/navigation_commands.dart';
 
 /// Overview “Apps” block: share strip + treemap / stacked mosaic tiles.
 class AppsOverviewSection extends StatelessWidget {
@@ -339,10 +338,9 @@ class _AppMosaicTileState extends State<_AppMosaicTile> {
   bool _pressed = false;
 
   void _open() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            AppCollectionsPage(packageName: widget.app.packageName),
+    context.call(
+      PushAppCollectionsRouteCommand(
+        packageName: widget.app.packageName,
       ),
     );
   }
@@ -369,20 +367,11 @@ class _AppMosaicTileState extends State<_AppMosaicTile> {
         curve: Curves.easeOutCubic,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          decoration: Liquid.panel(
+          decoration: Liquid.panelAccent(
             context,
+            accent: accent,
             radius: widget.featured ? 22 : 18,
-            tint: Color.alphaBlend(
-              accent.withValues(alpha: 0.12),
-              scheme.surfaceContainerLow,
-            ),
-            elevated: widget.featured,
-            strength: widget.featured ? 1.2 : 0.8,
-          ).copyWith(
-            border: Border.all(
-              color: accent.withValues(alpha: widget.featured ? 0.35 : 0.2),
-              width: widget.featured ? 1.2 : 0.8,
-            ),
+            featured: widget.featured,
           ),
           child: Stack(
             children: [

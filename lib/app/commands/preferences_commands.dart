@@ -2,32 +2,31 @@ import 'package:any/any.dart';
 
 import '../repositories/database_repository.dart';
 import '../states/preferences_state.dart';
+import 'ref_mutate.dart';
 
 class ReloadPreferencesCommand extends Command {
   const ReloadPreferencesCommand();
 
   @override
   Future<void> call(Ref ref) async {
-    final current = ref.of<PreferencesState>();
-    ref.call<PreferencesState>(
-      (_) => current.copyWith(loading: current.keys.isEmpty),
-    );
+    ref.mutate<PreferencesState>((s) {
+      if (s.keys.isEmpty) s.loading = true;
+    });
     try {
-      final keys = await ref.get<DatabaseRepository>().preferenceKeys();
-      ref.call<PreferencesState>(
-        (_) => current.copyWith(
-          keys: keys,
-          loading: false,
-          clearError: true,
-        ),
-      );
+      final prefs = ref.get<DatabaseRepository>().preferences;
+      final keys = await prefs.keys();
+      final values = await prefs.readAll();
+      ref.mutate<PreferencesState>((s) {
+        s.keys = keys;
+        s.values = values;
+        s.loading = false;
+        s.error = null;
+      });
     } catch (e) {
-      ref.call<PreferencesState>(
-        (_) => current.copyWith(
-          error: e.toString(),
-          loading: false,
-        ),
-      );
+      ref.mutate<PreferencesState>((s) {
+        s.error = e.toString();
+        s.loading = false;
+      });
     }
   }
 }
@@ -40,13 +39,13 @@ class SetPreferenceCommand extends Command {
 
   @override
   Future<void> call(Ref ref) async {
-    await ref.get<DatabaseRepository>().setPreference(key, value);
-    final current = ref.of<PreferencesState>();
-    if (!current.keys.contains(key)) {
-      ref.call<PreferencesState>(
-        (_) => current.copyWith(keys: [...current.keys, key]..sort()),
-      );
-    }
+    await ref.get<DatabaseRepository>().preferences.set(key, value);
+    ref.mutate<PreferencesState>((s) {
+      if (!s.keys.contains(key)) {
+        s.keys = [...s.keys, key]..sort();
+      }
+      s.values[key] = value;
+    });
   }
 }
 
@@ -57,12 +56,10 @@ class RemovePreferenceCommand extends Command {
 
   @override
   Future<void> call(Ref ref) async {
-    await ref.get<DatabaseRepository>().removePreference(key);
-    final current = ref.of<PreferencesState>();
-    ref.call<PreferencesState>(
-      (_) => current.copyWith(
-        keys: current.keys.where((k) => k != key).toList(),
-      ),
-    );
+    await ref.get<DatabaseRepository>().preferences.remove(key);
+    ref.mutate<PreferencesState>((s) {
+      s.keys = s.keys.where((k) => k != key).toList();
+      s.values.remove(key);
+    });
   }
 }

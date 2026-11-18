@@ -2,7 +2,7 @@ name: shared_database
 description: >
   Installable host app and importable library — shared on-device SQLite with
   collection CRUD for your other Flutter apps on Android and Windows.
-version: 1.3.0+4
+version: 1.4.0+5
 publish_to: 'none'
 
 environment:

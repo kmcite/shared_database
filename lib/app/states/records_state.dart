@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:shared_database/shared_database.dart';
 
 import '../models/records_view.dart';
-import '../utils/json_format.dart';
+import '../models/json_format.dart';
 
 /// Mutable browser state for one collection (filters, selection, pins).
 class RecordsState {
@@ -11,6 +11,7 @@ class RecordsState {
 
   String collectionName;
   List<SharedRecord> records = [];
+  String? lastPutId;
   bool initialLoading = true;
   String? watchError;
 

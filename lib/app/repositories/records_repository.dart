@@ -2,15 +2,21 @@ import 'dart:async';
 
 import 'package:shared_database/shared_database.dart';
 
+import 'collections_repository.dart';
 import 'database_repository.dart';
+import 'preferences_repository.dart';
 
 /// Live watch + CRUD for one collection (scoped per [RecordsScope]).
 class RecordsRepository {
-  RecordsRepository(this.collectionName, {DatabaseRepository? db})
-      : _db = db ?? DatabaseRepository();
+  RecordsRepository(this.collectionName, {DatabaseRepository? database}) {
+    final root = database ?? DatabaseRepository();
+    _collections = root.collections;
+    preferences = root.preferences;
+  }
 
   final String collectionName;
-  final DatabaseRepository _db;
+  late final CollectionsRepository _collections;
+  late final PreferencesRepository preferences;
 
   StreamSubscription<List<SharedRecord>>? _subscription;
 
@@ -19,8 +25,8 @@ class RecordsRepository {
     void Function(Object) onError,
   ) {
     cancelWatch();
-    _subscription = _db
-        .watchCollection(collectionName)
+    _subscription = _collections
+        .watch(collectionName)
         .listen(onData, onError: onError);
   }
 
@@ -30,7 +36,8 @@ class RecordsRepository {
   }
 
   Future<void> removeById(String id) =>
-      _db.removeById(collectionName, id);
+      _collections.removeRecordById(collectionName, id);
 
-  DatabaseRepository get database => _db;
+  Future<String> put(Map<String, dynamic> data, {String? id}) =>
+      _collections.putRecord(collectionName, data, id: id);
 }

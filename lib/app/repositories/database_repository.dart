@@ -1,27 +1,17 @@
 import 'package:shared_database/shared_database.dart';
 
-/// Shared DB access for commands and repositories.
+import 'backup_repository.dart';
+import 'collections_repository.dart';
+import 'preferences_repository.dart';
+
+/// Root DB access for the host app — one [SharedDatabase], three behavioral repos.
 class DatabaseRepository {
-  DatabaseRepository({SharedDatabase? db}) : _db = db ?? SharedDatabase.instance;
+  DatabaseRepository({SharedDatabase? db})
+      : collections = CollectionsRepository(db ?? SharedDatabase.instance),
+        preferences = PreferencesRepository(db ?? SharedDatabase.instance),
+        backup = BackupRepository(db ?? SharedDatabase.instance);
 
-  final SharedDatabase _db;
-
-  SharedDatabase get db => _db;
-
-  Future<List<CollectionInfo>> collectionsDetailed() => _db.collectionsDetailed();
-
-  Future<List<String>> preferenceKeys() => _db.getPreferenceKeys();
-
-  Future<String?> getPreference(String key) => _db.getPreference(key);
-
-  Future<void> setPreference(String key, String value) =>
-      _db.setPreference(key, value);
-
-  Future<void> removePreference(String key) => _db.removePreference(key);
-
-  Future<void> removeById(String collection, String id) =>
-      _db.removeById(collection, id);
-
-  Stream<List<SharedRecord>> watchCollection(String name) =>
-      _db.watchCollection(name);
+  final CollectionsRepository collections;
+  final PreferencesRepository preferences;
+  final BackupRepository backup;
 }

@@ -3,37 +3,33 @@ import 'package:flutter/material.dart';
 
 import '../repositories/database_repository.dart';
 import '../states/settings_state.dart';
-import '../theme/app_theme.dart';
-import '../utils/app_prefs.dart';
+import '../models/app_prefs.dart';
+import 'ref_mutate.dart';
+
 class LoadSettingsCommand extends Command {
   const LoadSettingsCommand();
 
   @override
   Future<void> call(Ref ref) async {
-    final db = ref.get<DatabaseRepository>();
-    final state = ref.of<SettingsState>();
+    final prefs = ref.get<DatabaseRepository>().preferences;
     try {
-      final modeRaw = await db.getPreference(AppPrefs.themeMode);
-      state.themeMode = switch (modeRaw) {
-        'light' => ThemeMode.light,
-        'dark' => ThemeMode.dark,
-        _ => ThemeMode.system,
-      };
-      final seedRaw = await db.getPreference(AppPrefs.accentSeed);
-      if (seedRaw != null) {
-        final value = int.tryParse(seedRaw.replaceFirst('#', '0xFF'));
-        if (value != null) {
-          state.accent = AppAccent.fromSeed(Color(value));
+      final modeRaw = await prefs.get(AppPrefs.themeMode);
+      final intervalRaw = await prefs.get(AppPrefs.watchIntervalMs);
+      ref.mutate<SettingsState>((s) {
+        s.themeMode = switch (modeRaw) {
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          _ => ThemeMode.system,
+        };
+        final ms = int.tryParse(intervalRaw ?? '');
+        if (ms != null && ms >= 500) {
+          s.watchInterval = Duration(milliseconds: ms);
         }
-      }
-      final intervalRaw = await db.getPreference(AppPrefs.watchIntervalMs);
-      final ms = int.tryParse(intervalRaw ?? '');
-      if (ms != null && ms >= 500) {
-        state.watchInterval = Duration(milliseconds: ms);
-      }
-    } catch (_) {}
-    state.loaded = true;
-    ref.call<SettingsState>((s) => s);
+        s.loaded = true;
+      });
+    } catch (_) {
+      ref.mutate<SettingsState>((s) => s.loaded = true);
+    }
   }
 }
 
@@ -44,32 +40,13 @@ class SetThemeModeCommand extends Command {
 
   @override
   Future<void> call(Ref ref) async {
-    final state = ref.of<SettingsState>();
-    state.themeMode = mode;
-    ref.call<SettingsState>((s) => s);
+    ref.mutate<SettingsState>((s) => s.themeMode = mode);
     final raw = switch (mode) {
       ThemeMode.light => 'light',
       ThemeMode.dark => 'dark',
       ThemeMode.system => 'system',
     };
-    await ref.get<DatabaseRepository>().setPreference(AppPrefs.themeMode, raw);
-  }
-}
-
-class SetAccentCommand extends Command {
-  const SetAccentCommand(this.accent);
-
-  final AppAccent accent;
-
-  @override
-  Future<void> call(Ref ref) async {
-    final state = ref.of<SettingsState>();
-    state.accent = accent;
-    ref.call<SettingsState>((s) => s);
-    await ref.get<DatabaseRepository>().setPreference(
-      AppPrefs.accentSeed,
-      '#${accent.seed.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
-    );
+    await ref.get<DatabaseRepository>().preferences.set(AppPrefs.themeMode, raw);
   }
 }
 
@@ -80,10 +57,8 @@ class SetWatchIntervalCommand extends Command {
 
   @override
   Future<void> call(Ref ref) async {
-    final state = ref.of<SettingsState>();
-    state.watchInterval = interval;
-    ref.call<SettingsState>((s) => s);
-    await ref.get<DatabaseRepository>().setPreference(
+    ref.mutate<SettingsState>((s) => s.watchInterval = interval);
+    await ref.get<DatabaseRepository>().preferences.set(
       AppPrefs.watchIntervalMs,
       '${interval.inMilliseconds}',
     );
