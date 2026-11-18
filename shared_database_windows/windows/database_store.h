@@ -13,9 +13,14 @@ struct sqlite3;
 
 namespace shared_database_windows {
 
-struct RecordIdData {
+struct RecordRow {
   std::string id;
+  std::string collection;
   std::string data;
+  int64_t created_at = 0;
+  int64_t updated_at = 0;
+  std::string created_by_package;
+  std::string updated_by_package;
 };
 
 struct CollectionDetail {
@@ -23,36 +28,6 @@ struct CollectionDetail {
   int64_t created_at = 0;
   std::string created_by_package;
   int record_count = 0;
-};
-
-struct AppDetail {
-  std::string package_name;
-  int collection_count = 0;
-  int record_count = 0;
-  std::vector<CollectionDetail> collections;
-};
-
-struct AccessLogRow {
-  int64_t id = 0;
-  int64_t occurred_at = 0;
-  std::string caller_package;
-  std::string action;
-  std::optional<std::string> collection_name;
-  std::optional<std::string> record_id;
-};
-
-struct ConnectedAppRow {
-  std::string package_name;
-  int64_t last_seen_at = 0;
-  int access_count = 0;
-};
-
-struct DatabaseOverviewData {
-  int collection_count = 0;
-  int record_count = 0;
-  std::string host_package;
-  bool activity_logging_enabled = true;
-  std::vector<ConnectedAppRow> connected_apps;
 };
 
 struct RecordWatchToken {
@@ -73,32 +48,41 @@ class DatabaseStore {
   void EnsureCollection(const std::string& name);
   std::vector<std::string> ListCollectionNames();
   std::vector<CollectionDetail> ListCollectionsDetailed();
-  std::vector<AppDetail> ListAppsDetailed();
 
-  std::string InsertRecord(const std::string& collection,
-                           const std::string& id, const std::string& data);
   std::string UpsertRecord(const std::string& collection, const std::string& id,
                            const std::string& data);
+  /// Batch upserts (id, dataJson pairs) in a single transaction.
+  std::vector<std::string> UpsertRecords(
+      const std::string& collection,
+      const std::vector<std::pair<std::string, std::string>>& items);
+  /// Shallow-merges patch_json top-level keys into the stored record data.
+  std::string PatchRecord(const std::string& collection, const std::string& id,
+                          const std::string& patch_json);
   std::map<std::string, int64_t> GetCollectionsWatchToken();
   std::map<std::string, int64_t> GetCollectionWatchToken(
       const std::string& collection);
   RecordWatchToken GetRecordWatchToken(const std::string& collection,
                                        const std::string& id);
-  std::vector<RecordIdData> GetRecords(const std::string& collection);
-  std::optional<RecordIdData> GetRecord(const std::string& collection,
-                                        const std::string& id);
+  std::vector<RecordRow> GetRecords(const std::string& collection,
+                                    std::optional<int64_t> limit = std::nullopt,
+                                    std::optional<int64_t> offset = std::nullopt);
+  std::optional<RecordRow> GetRecord(const std::string& collection,
+                                     const std::string& id);
   void UpdateRecord(const std::string& collection, const std::string& id,
                     const std::string& data);
   void DeleteRecord(const std::string& collection, const std::string& id);
+  int DeleteAllRecords(const std::string& collection);
+
+  // — Preferences —
+
+  std::optional<std::string> GetPreferenceValue(const std::string& key);
+  void SetPreferenceValue(const std::string& key, const std::string& value);
+  void RemovePreference(const std::string& key);
+  std::vector<std::string> ListPreferenceKeys();
+  RecordWatchToken GetPreferenceWatchToken(const std::string& key);
 
   void RenameCollection(const std::string& from, const std::string& to);
   void DeleteCollection(const std::string& name);
-
-  bool IsActivityLoggingEnabled();
-  void SetActivityLoggingEnabled(bool enabled);
-  void ClearAccessLog();
-  std::vector<AccessLogRow> GetAccessLog(int limit);
-  DatabaseOverviewData GetOverview();
 
  private:
   DatabaseStore() = default;
@@ -109,14 +93,8 @@ class DatabaseStore {
   int UserVersion();
   void SetUserVersion(int version);
 
-  void LogAccess(const std::string& action,
-                 const std::optional<std::string>& collection,
-                 const std::optional<std::string>& record_id);
 
   void EnsureCollectionUnlocked(const std::string& name);
-
-  bool LoadActivityLoggingPref();
-  void SaveActivityLoggingPref(bool enabled);
 
   std::mutex mutex_;
   bool is_host_ = false;
@@ -126,8 +104,6 @@ class DatabaseStore {
   std::string host_package_;
   std::string data_dir_;
   std::string db_path_;
-  std::string prefs_path_;
-  bool activity_logging_enabled_ = true;
   sqlite3* db_ = nullptr;
 };
 

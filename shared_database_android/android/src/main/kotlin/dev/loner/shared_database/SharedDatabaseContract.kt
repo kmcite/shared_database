@@ -11,6 +11,7 @@ object SharedDatabaseContract {
     object Paths {
         const val COLLECTIONS = "collections"
         const val RECORDS = "records"
+        const val PREFERENCES = "preferences"
     }
 
     object Columns {
@@ -21,5 +22,8 @@ object SharedDatabaseContract {
         const val UPDATED_AT = "updated_at"
         const val CREATED_BY = "created_by_package"
         const val UPDATED_BY = "updated_by_package"
+        const val KEY = "key"
+        const val VALUE = "value"
+        const val RECORD_COUNT = "record_count"
     }
 }

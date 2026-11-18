@@ -1,15 +1,5 @@
 part of 'shared_database.dart';
 
-int _tokenFingerprint(Map<dynamic, dynamic>? token) {
-  if (token == null) return 0;
-  final count = token['count'];
-  final fingerprint = token['fingerprint'];
-  final maxUpdatedAt = token['maxUpdatedAt'];
-  final exists = token['exists'];
-  final updatedAt = token['updatedAt'];
-  return Object.hash(count, fingerprint, maxUpdatedAt, exists, updatedAt);
-}
-
 /// One poll loop per [multiplexKey]; fans out to many stream listeners.
 final _watchRegistry = _SharedWatchRegistry();
 
@@ -151,6 +141,8 @@ bool _sharedRecordsChanged(List<SharedRecord>? a, List<SharedRecord> b) {
   }
   return false;
 }
+
+bool _nullableStringChanged(String? a, String? b) => a != b;
 
 bool _stringListChanged(List<String>? a, List<String> b) {
   if (a == null || a.length != b.length) return true;

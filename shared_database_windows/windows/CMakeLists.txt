@@ -20,6 +20,8 @@ set(PLUGIN_NAME "shared_database_windows_plugin")
 list(APPEND PLUGIN_SOURCES
   "shared_database_windows_plugin.cpp"
   "shared_database_windows_plugin.h"
+  "shared_database_api.g.cpp"
+  "shared_database_api.g.h"
   "database_store.cpp"
   "database_store.h"
 )
@@ -35,6 +37,22 @@ FetchContent_MakeAvailable(sqlite_amalgamation)
 add_library(sqlite3 STATIC "${sqlite_amalgamation_SOURCE_DIR}/sqlite3.c")
 target_include_directories(sqlite3 PUBLIC "${sqlite_amalgamation_SOURCE_DIR}")
 target_compile_definitions(sqlite3 PRIVATE SQLITE_OMIT_LOAD_EXTENSION)
+
+# nlohmann/json single header (used by database_store.cpp for JSON patching).
+set(NLOHMANN_JSON_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/nlohmann_json")
+set(NLOHMANN_JSON_HEADER "${NLOHMANN_JSON_INCLUDE_DIR}/nlohmann/json.hpp")
+if(NOT EXISTS "${NLOHMANN_JSON_HEADER}")
+  file(MAKE_DIRECTORY "${NLOHMANN_JSON_INCLUDE_DIR}/nlohmann")
+  file(DOWNLOAD
+    "https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp"
+    "${NLOHMANN_JSON_HEADER}"
+    STATUS nlohmann_json_download_status
+  )
+  list(GET nlohmann_json_download_status 0 nlohmann_json_download_code)
+  if(NOT nlohmann_json_download_code EQUAL 0)
+    message(FATAL_ERROR "Failed to download nlohmann/json header")
+  endif()
+endif()
 
 # Define the plugin library target. Its name must not be changed (see comment
 # on PLUGIN_NAME above).
@@ -60,6 +78,8 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 # dependencies here.
 target_include_directories(${PLUGIN_NAME} INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(${PLUGIN_NAME} PRIVATE
+  "${NLOHMANN_JSON_INCLUDE_DIR}")
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin
   sqlite3 shell32)
 

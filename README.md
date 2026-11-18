@@ -4,10 +4,10 @@ One SQLite database on the device, shared across your Flutter apps on **Android*
 
 | Piece | Role |
 |--------|------|
-| **Database app** (`dev.loner.shared_database`) | Host — owns the database and admin APIs. |
-| **`shared_database` package** | Client library — same `SharedDatabase` API everywhere. |
+| **Database app** (`dev.loner.shared_database`) | Ships the provider/plugin and the admin console UI. |
+| **`shared_database` package** | The API every app uses — same `SharedDatabase` surface everywhere. |
 
-Run or install the Database host **before** client apps call `SharedDatabase.open()`.
+Every app calls the same `SharedDatabase.open()` and gets the full API — there is no host/client split. On Android the plugin auto-detects whether it runs inside the provider's app and routes through `ContentResolver` otherwise; on Windows all apps share one SQLite file under `%ProgramData%`.
 
 ---
 
@@ -49,8 +49,6 @@ Default database path:
 
 `%ProgramData%\dev.loner.shared_database\shared.db`
 
-(host prefs: `host_prefs.ini` in the same folder).
-
 ### Bootstrap
 
 ```dart
@@ -59,54 +57,53 @@ import 'package:shared_database/shared_database.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SharedDatabase.open();
-  // optional: await SharedDatabase.attachAndVerify();
   runApp(const MyApp());
 }
 ```
 
 ### Data API
 
+The Dart ↔ native boundary is a strictly-typed [Pigeon](https://pub.dev/packages/pigeon) contract (`pigeons/shared_database_api.dart`), generated into Dart, Kotlin, and C++.
+
 ```dart
 final db = SharedDatabase.instance;
 
-await db.ensure('orders');
-final id = await db.put('orders', {'total': 99});
+await db.ensureCollection('orders');
+final id = await db.put('orders', {'total': 99});          // upsert (id auto-generated)
+final same = await db.put('orders', {'total': 100}, id: id); // upsert
 
-// Async reads
-final rows = await db.all('orders');
-final one = await db.get('orders', id);
+// Batch upsert — single native transaction on the host path
+final ids = await db.putMany('orders', [
+  (id: null, data: {'total': 1}),
+  (id: existingId, data: {'total': 2}),
+]);
+
+// Partial update — top-level keys of `patch` merge into the stored JSON
+await db.patch('orders', id, {'status': 'paid'});
+
+// Async reads (optional pagination)
+final rows = await db.getAll('orders', limit: 50, offset: 0);
+final one = await db.getById('orders', id);
 final names = await db.listCollections();
 
-// Sync reads (in-memory cache — see below)
-final cached = db.allSync('orders');
-final item = db.getSync('orders', id);
+// Remove
+await db.removeById('orders', id);   // one record
+await db.removeAll('orders');        // all records in the collection
 
-// Watch (polls host; updates cache)
+// Watch (polls native tokens; emits on change)
 db.watchCollection('orders').listen((records) { ... });
 db.watchRecord('orders', id).listen((record) { ... });
 db.watchCollections().listen((names) { ... });
+
+// Preferences (shared key/value store)
+await db.setPreference('theme', 'dark');
+final theme = await db.getPreference('theme');
+await db.removePreference('theme');
+final keys = await db.getPreferenceKeys();
+db.watchPreference('theme').listen((value) { ... });
 ```
 
-### Sync reads
-
-Platform I/O is always async. **Sync** methods read a **local cache** updated when you:
-
-- call `all` / `get` / `listCollections`, or
-- subscribe to `watchCollection` / `watchRecord` / `watchCollections`, or
-- call `put` / `patch` / `drop`.
-
-If nothing is cached yet, `allSync` / `getSync` throw with a clear message.
-
-### Write / read aliases
-
-| Preferred | Alias |
-|-----------|--------|
-| `put` | `create` |
-| `patch` | `update` |
-| `drop` | `delete` |
-| `all` | `getAll` |
-| `get` | `getById` |
-| `ensure` | `ensureCollection` |
+All reads are async — there is no synchronous cache API. Subscribe to the `watch*` streams for reactive updates.
 
 ---
 
@@ -124,42 +121,44 @@ flutter build apk
 Host initialization in code:
 
 ```dart
-await SharedDatabase.openHost();
+await SharedDatabase.open();
 ```
 
 ### In-app console
 
-The Database UI (`lib/app/`) includes:
+The Database UI (`lib/app/`) is a full admin suite — sidebar navigation on wide screens, bottom bar on phones:
 
-- **Apps** — packages that have collections or records in the database.
-- **Collections** — per app; create, rename, delete; open records.
-- **Records** — view, add, edit JSON, delete (per collection).
+- **Overview** — live stats (apps, collections, records, preferences), per-app record distribution, recent collections.
+- **Collections** — every collection in one searchable, filterable, sortable grid; per-app drill-down.
+- **Records** — per-collection browser with live watch, full-text filter, six sort orders, card/table views, multi-select bulk delete/copy, pins and tags (stored in shared preferences), and a visual JSON tree editor (plus raw JSON mode).
+- **Search** — global search across all record ids and JSON content.
+- **Prefs** — browse/edit the shared key/value store.
+- **Backup** — export/import the entire database (collections + preferences) as JSON; wipe-all danger zone.
+- **Settings** — theme mode, accent color and watch interval, persisted in the database preferences themselves.
 
-The console refreshes automatically on a short interval and after edits (no pull-to-refresh).
+Data refreshes automatically via the watch streams and a short poll interval (configurable in Settings).
 
 After changing Kotlin or C++ in the platform plugins, rebuild the native app — hot reload is not enough.
 
-### Host-only Dart API
+### Console & admin API
 
-These require `openHost()` (or `SharedDatabaseConfig.host()`); clients get `HOST_ONLY` from the channel if they call them:
+Every app can call these — there is no host-only restriction:
 
 ```dart
 final db = SharedDatabase.instance;
 
-// Dashboard
-await db.overview();              // DatabaseOverview
+// Collection metadata (name, createdAt, createdByPackage, recordCount)
 await db.collectionsDetailed();   // List<CollectionInfo>
-await db.appsDetailed();          // List<AppDataInfo>
 
 // Collections
 await db.ensureCollection('notes');
 await db.renameCollection('old', 'new');
-await db.deleteCollection('notes');
+await db.removeCollection('notes');
 
-// Records use the same put / patch / drop API as clients
+// Records use the same put / putMany / patch / removeById / removeAll API
 await db.put('notes', {'title': 'Hello'});
-await db.patch('notes', id, {'title': 'Updated'});
-await db.drop('notes', id);
+await db.put('notes', {'title': 'Updated'}, id: id); // upsert
+await db.removeById('notes', id);
 ```
 
 Admin types live in `shared_database_admin.dart` (`DatabaseOverview`, `CollectionInfo`, `AppDataInfo`).
@@ -168,12 +167,11 @@ Admin types live in `shared_database_admin.dart` (`DatabaseOverview`, `Collectio
 
 ## Architecture (short)
 
-- **Dart** — single `MethodChannel('shared_database')` in `lib/src/shared_database.dart`.
-- **Android host** — `SharedDatabaseHelper` + `SharedDatabaseProvider` (`content://dev.loner.shared_database/...`).
-- **Android client** — `ContentResolver` in `shared_database_android` (`isHost: false`).
-- **Windows (host & client)** — `DatabaseStore` in `shared_database_windows` opens the same SQLite file; `isHost` gates admin channel methods only.
+- **Dart** — generated Pigeon `SharedDatabaseApi` client in `lib/src/pigeon/` (schema: `pigeons/shared_database_api.dart`). Regenerate with `dart run pigeon --input pigeons/shared_database_api.dart` after changing the schema.
+- **Android** — `SharedDatabaseHelper` + `SharedDatabaseProvider` (`content://dev.loner.shared_database/...`, including `collections`, `records`, `preferences`, and `call()` for collection rename/delete); `SharedDatabasePlugin` implements the generated Kotlin `SharedDatabaseApi`. The plugin auto-detects the provider's app by package name — inside it talks to SQLite directly, everywhere else through `ContentResolver`.
+- **Windows** — `DatabaseStore` in `shared_database_windows` opens the same SQLite file under `%ProgramData%\dev.loner.shared_database\`; `SharedDatabaseWindowsPlugin` implements the generated C++ `SharedDatabaseApi`.
 
-DB schema version **2** (collections, records, access_log) — aligned across Android and Windows.
+DB schema version **3** (collections, records, preferences) — aligned across Android and Windows.
 
 ---
 

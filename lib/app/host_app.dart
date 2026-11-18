@@ -3,8 +3,7 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:shared_database/shared_database.dart';
 
 import 'brand/brand.dart';
-import 'pages/host_console_page.dart';
-import 'providers/host_database_scope.dart';
+import 'features/shell/app_host.dart';
 import 'theme/app_theme.dart';
 
 class SharedDatabaseHostApp extends StatefulWidget {
@@ -30,7 +29,7 @@ class _SharedDatabaseHostAppState extends State<SharedDatabaseHostApp> {
       _ready = false;
     });
     try {
-      await SharedDatabase.openHost();
+      await SharedDatabase.open();
       if (!mounted) return;
       FlutterNativeSplash.remove();
       setState(() => _ready = true);
@@ -43,21 +42,18 @@ class _SharedDatabaseHostAppState extends State<SharedDatabaseHostApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: Brand.appName,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      builder: (context, child) {
-        if (!_ready) return child ?? const SizedBox.shrink();
-        return HostDatabaseScope(child: child ?? const SizedBox.shrink());
-      },
-      home: switch ((_ready, _error != null)) {
-        (true, _) => const HostConsolePage(),
-        (_, true) => BrandSplashError(message: _error!, onRetry: _start),
-        _ => const BrandSplashLoading(),
-      },
-    );
+    if (!_ready) {
+      final seed = AppAccent.teal.seed;
+      return MaterialApp(
+        title: Brand.appName,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(seed),
+        darkTheme: AppTheme.dark(seed),
+        home: _error != null
+            ? BrandSplashError(message: _error!, onRetry: _start)
+            : const BrandSplashLoading(),
+      );
+    }
+    return const AppHost();
   }
 }

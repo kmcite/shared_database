@@ -2,7 +2,7 @@ name: shared_database
 description: >
   Installable host app and importable library — shared on-device SQLite with
   collection CRUD for your other Flutter apps on Android and Windows.
-version: 1.0.0+1
+version: 1.3.0+4
 publish_to: 'none'
 
 environment:
@@ -12,8 +12,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  any:
+    git:
+      url: https://github.com/kmcite/any.git  
   flutter_native_splash: ^2.4.7
-  provider: ^6.1.5
   cupertino_icons: ^2.0.0
   plugin_platform_interface: ^2.1.8
   uuid: ^4.5.1
@@ -21,10 +23,12 @@ dependencies:
     path: ./shared_database_android
   shared_database_windows:
     path: ./shared_database_windows
+  file_picker: ^13.3.3
 
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  pigeon: ^30.0.2
 
 flutter:
   uses-material-design: true
@@ -32,6 +36,7 @@ flutter:
   assets:
     - assets/splash.png
     - assets/app_icon.png
+    - assets/app_icon_fg.png
 
   plugin:
     platforms:
@@ -48,8 +53,8 @@ flutter_launcher_icons:
     image_path: assets/app_icon.png
     icon_size: 256
   image_path: assets/app_icon.png
-  adaptive_icon_background: "#0F172A"
-  adaptive_icon_foreground: assets/app_icon.png
+  adaptive_icon_background: "#050505"
+  adaptive_icon_foreground: assets/app_icon_fg.png
 
 flutter_native_splash:
   color: "#0F172A"

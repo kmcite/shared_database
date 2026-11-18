@@ -3,6 +3,8 @@ package dev.loner.shared_database
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import org.json.JSONException
+import org.json.JSONObject
 
 class SharedDatabaseHelper(context: Context) :
     SQLiteOpenHelper(context, SharedDatabaseContract.DB_NAME, null, DB_VERSION) {
@@ -22,6 +24,9 @@ class SharedDatabaseHelper(context: Context) :
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             migrateToV2(db)
+        }
+        if (oldVersion < 3) {
+            createPreferencesTable(db)
         }
     }
 
@@ -53,23 +58,19 @@ class SharedDatabaseHelper(context: Context) :
         db.execSQL(
             "CREATE INDEX idx_records_collection ON records(collection)",
         )
+        createPreferencesTable(db)
+    }
+
+    private fun createPreferencesTable(db: SQLiteDatabase) {
         db.execSQL(
             """
-            CREATE TABLE access_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                occurred_at INTEGER NOT NULL,
-                caller_package TEXT NOT NULL,
-                action TEXT NOT NULL,
-                collection_name TEXT,
-                record_id TEXT
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                updated_by_package TEXT NOT NULL
             )
             """.trimIndent(),
-        )
-        db.execSQL(
-            "CREATE INDEX idx_access_log_occurred_at ON access_log(occurred_at DESC)",
-        )
-        db.execSQL(
-            "CREATE INDEX idx_access_log_caller ON access_log(caller_package)",
         )
     }
 
@@ -82,24 +83,6 @@ class SharedDatabaseHelper(context: Context) :
         )
         db.execSQL(
             "ALTER TABLE records ADD COLUMN updated_by_package TEXT NOT NULL DEFAULT 'legacy'",
-        )
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS access_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                occurred_at INTEGER NOT NULL,
-                caller_package TEXT NOT NULL,
-                action TEXT NOT NULL,
-                collection_name TEXT,
-                record_id TEXT
-            )
-            """.trimIndent(),
-        )
-        db.execSQL(
-            "CREATE INDEX IF NOT EXISTS idx_access_log_occurred_at ON access_log(occurred_at DESC)",
-        )
-        db.execSQL(
-            "CREATE INDEX IF NOT EXISTS idx_access_log_caller ON access_log(caller_package)",
         )
     }
 
@@ -116,7 +99,6 @@ class SharedDatabaseHelper(context: Context) :
             bindString(3, callerPackage)
         }.executeInsert()
         if (rowId != -1L) {
-            logAccess(callerPackage, ACTION_ENSURE_COLLECTION, name, null)
         }
     }
 
@@ -160,69 +142,6 @@ class SharedDatabaseHelper(context: Context) :
         return rows
     }
 
-    fun listAppsDetailed(): List<Map<String, Any?>> {
-        val collections = listCollectionsDetailed()
-        val byName = collections.associateBy { it["name"] as String }
-        val byApp = linkedMapOf<String, LinkedHashMap<String, Map<String, Any?>>>()
-        val recordCounts = mutableMapOf<String, Int>()
-
-        fun collectionsFor(pkg: String) =
-            byApp.getOrPut(pkg) { linkedMapOf() }
-
-        for (c in collections) {
-            val pkg = c["createdByPackage"] as String
-            collectionsFor(pkg)[c["name"] as String] = c
-        }
-
-        readableDatabase.rawQuery(
-            """
-            SELECT collection, created_by_package, COUNT(*)
-            FROM records
-            GROUP BY collection, created_by_package
-            """.trimIndent(),
-            null,
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val collection = cursor.getString(0)
-                val pkg = cursor.getString(1)
-                val count = cursor.getInt(2)
-                recordCounts[pkg] = (recordCounts[pkg] ?: 0) + count
-                val info = byName[collection] ?: continue
-                collectionsFor(pkg)[collection] = info
-            }
-        }
-
-        return byApp.entries.map { (pkg, cols) ->
-            mapOf(
-                "packageName" to pkg,
-                "collectionCount" to cols.size,
-                "recordCount" to (recordCounts[pkg] ?: 0),
-                "collections" to cols.values.toList(),
-            )
-        }.sortedBy { it["packageName"] as String }
-    }
-
-    fun insertRecord(
-        collection: String,
-        id: String,
-        data: String,
-        callerPackage: String,
-    ): String {
-        ensureCollection(collection, callerPackage)
-        val now = System.currentTimeMillis()
-        writableDatabase.execSQL(
-            """
-            INSERT INTO records (
-                id, collection, data, created_at, updated_at,
-                created_by_package, updated_by_package
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """.trimIndent(),
-            arrayOf<Any>(id, collection, data, now, now, callerPackage, callerPackage),
-        )
-        logAccess(callerPackage, ACTION_INSERT, collection, id)
-        return id
-    }
-
     fun upsertRecord(
         collection: String,
         id: String,
@@ -230,6 +149,38 @@ class SharedDatabaseHelper(context: Context) :
         callerPackage: String,
     ): String {
         ensureCollection(collection, callerPackage)
+        upsertRecordInternal(collection, id, data, callerPackage)
+        return id
+    }
+
+    /// Batch upserts in a single transaction. Each pair is (id, dataJson).
+    fun putManyRecords(
+        collection: String,
+        items: List<Pair<String, String>>,
+        callerPackage: String,
+    ): List<String> {
+        ensureCollection(collection, callerPackage)
+        val db = writableDatabase
+        val ids = ArrayList<String>(items.size)
+        db.beginTransaction()
+        try {
+            for ((id, data) in items) {
+                upsertRecordInternal(collection, id, data, callerPackage)
+                ids.add(id)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return ids
+    }
+
+    private fun upsertRecordInternal(
+        collection: String,
+        id: String,
+        data: String,
+        callerPackage: String,
+    ) {
         val now = System.currentTimeMillis()
         writableDatabase.execSQL(
             """
@@ -244,7 +195,37 @@ class SharedDatabaseHelper(context: Context) :
             """.trimIndent(),
             arrayOf<Any>(id, collection, data, now, now, callerPackage, callerPackage),
         )
-        logAccess(callerPackage, ACTION_UPDATE, collection, id)
+    }
+
+    /// Shallow-merges [patchJson] top-level keys into the stored record data.
+    fun patchRecord(
+        collection: String,
+        id: String,
+        patchJson: String,
+        callerPackage: String,
+    ): String {
+        val existing = getRecord(collection, id)
+            ?: throw IllegalArgumentException(
+                "Record \"$id\" not found in \"$collection\"",
+            )
+        val base = try {
+            JSONObject(existing[SharedDatabaseContract.Columns.DATA] ?: "{}")
+        } catch (e: JSONException) {
+            throw IllegalArgumentException(
+                "Stored data of record \"$id\" is not a JSON object",
+            )
+        }
+        val patch = try {
+            JSONObject(patchJson)
+        } catch (e: JSONException) {
+            throw IllegalArgumentException("patch dataJson must be a JSON object")
+        }
+        val keys = patch.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            base.put(key, patch.get(key))
+        }
+        updateRecord(collection, id, base.toString(), callerPackage)
         return id
     }
 
@@ -302,8 +283,17 @@ class SharedDatabaseHelper(context: Context) :
         }
     }
 
-    fun getRecords(collection: String): List<Map<String, String>> {
+    fun getRecords(
+        collection: String,
+        limit: Int? = null,
+        offset: Int? = null,
+    ): List<Map<String, String>> {
         val db = readableDatabase
+        val pagination = when {
+            limit != null -> " LIMIT ?" + if (offset != null) " OFFSET ?" else ""
+            offset != null -> " LIMIT -1 OFFSET ?"
+            else -> ""
+        }
         val rows = mutableListOf<Map<String, String>>()
         db.rawQuery(
             """
@@ -312,8 +302,13 @@ class SharedDatabaseHelper(context: Context) :
             FROM records
             WHERE collection = ?
             ORDER BY updated_at DESC
+            $pagination
             """.trimIndent(),
-            arrayOf(collection),
+            buildList {
+                add(collection)
+                if (limit != null) add(limit.toString())
+                if (offset != null) add(offset.toString())
+            }.toTypedArray(),
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 rows.add(
@@ -329,6 +324,66 @@ class SharedDatabaseHelper(context: Context) :
             }
         }
         return rows
+    }
+
+    // — Preferences —
+
+    fun getPreferenceValue(key: String): String? {
+        readableDatabase.rawQuery(
+            "SELECT value FROM preferences WHERE key = ?",
+            arrayOf(key),
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }
+
+    fun setPreferenceValue(key: String, value: String, callerPackage: String) {
+        writableDatabase.execSQL(
+            """
+            INSERT INTO preferences (key, value, updated_at, updated_by_package)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at,
+                updated_by_package = excluded.updated_by_package
+            """.trimIndent(),
+            arrayOf<Any>(key, value, System.currentTimeMillis(), callerPackage),
+        )
+    }
+
+    fun removePreference(key: String, callerPackage: String) {
+        writableDatabase.execSQL(
+            "DELETE FROM preferences WHERE key = ?",
+            arrayOf(key),
+        )
+    }
+
+    fun listPreferenceKeys(): List<String> {
+        val keys = mutableListOf<String>()
+        readableDatabase.rawQuery(
+            "SELECT key FROM preferences ORDER BY key",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                keys.add(cursor.getString(0))
+            }
+        }
+        return keys
+    }
+
+    fun getPreferenceWatchToken(key: String): Map<String, Any?> {
+        readableDatabase.rawQuery(
+            "SELECT updated_at FROM preferences WHERE key = ?",
+            arrayOf(key),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                return mapOf("exists" to false)
+            }
+            return mapOf(
+                "exists" to true,
+                "updatedAt" to cursor.getLong(0),
+            )
+        }
     }
 
     fun getRecord(collection: String, id: String): Map<String, String>? {
@@ -374,7 +429,6 @@ class SharedDatabaseHelper(context: Context) :
                 id,
             ),
         )
-        logAccess(callerPackage, ACTION_UPDATE, collection, id)
         return 1
     }
 
@@ -383,8 +437,16 @@ class SharedDatabaseHelper(context: Context) :
             "DELETE FROM records WHERE collection = ? AND id = ?",
             arrayOf(collection, id),
         )
-        logAccess(callerPackage, ACTION_DELETE, collection, id)
         return 1
+    }
+
+    fun deleteAllRecords(collection: String, callerPackage: String): Int {
+        val deleted = writableDatabase.compileStatement(
+            "DELETE FROM records WHERE collection = ?",
+        ).apply {
+            bindString(1, collection)
+        }.executeUpdateDelete()
+        return deleted
     }
 
     fun renameCollection(
@@ -428,7 +490,6 @@ class SharedDatabaseHelper(context: Context) :
         } finally {
             db.endTransaction()
         }
-        logAccess(callerPackage, ACTION_RENAME_COLLECTION, from, to)
     }
 
     fun deleteCollection(name: String, callerPackage: String) {
@@ -440,48 +501,10 @@ class SharedDatabaseHelper(context: Context) :
         if (deleted == 0) {
             throw IllegalArgumentException("Collection \"$name\" not found")
         }
-        logAccess(callerPackage, ACTION_DELETE_COLLECTION, name, null)
-    }
-
-    fun logAccess(
-        callerPackage: String,
-        action: String,
-        collection: String?,
-        recordId: String?,
-    ) {
-        // Activity log is unused by the manager UI.
-    }
-
-    fun getOverview(): Map<String, Any?> {
-        val db = readableDatabase
-        var collections = 0
-        var records = 0
-        db.rawQuery("SELECT COUNT(*) FROM collections", null).use { c ->
-            if (c.moveToFirst()) collections = c.getInt(0)
-        }
-        db.rawQuery("SELECT COUNT(*) FROM records", null).use { c ->
-            if (c.moveToFirst()) records = c.getInt(0)
-        }
-        return mapOf(
-            "collectionCount" to collections,
-            "recordCount" to records,
-            "hostPackage" to appContext.packageName,
-        )
     }
 
     companion object {
-        const val DB_VERSION = 2
-
-        const val ACTION_ENSURE_COLLECTION = "ensure_collection"
-        const val ACTION_INSERT = "insert"
-        const val ACTION_UPDATE = "update"
-        const val ACTION_DELETE = "delete"
-        const val ACTION_QUERY_COLLECTIONS = "query_collections"
-        const val ACTION_QUERY_RECORDS = "query_records"
-        const val ACTION_QUERY_RECORD = "query_record"
-        const val ACTION_ADMIN_VIEW = "admin_view"
-        const val ACTION_RENAME_COLLECTION = "rename_collection"
-        const val ACTION_DELETE_COLLECTION = "delete_collection"
+        const val DB_VERSION = 3
 
         @Volatile
         private var instance: SharedDatabaseHelper? = null

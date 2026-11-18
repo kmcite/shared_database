@@ -34,6 +34,16 @@ class SharedDatabaseProvider : ContentProvider() {
                 "collections/*/records/*",
                 RECORD,
             )
+            addURI(
+                SharedDatabaseContract.AUTHORITY,
+                "preferences",
+                PREFERENCES,
+            )
+            addURI(
+                SharedDatabaseContract.AUTHORITY,
+                "preferences/*",
+                PREFERENCE,
+            )
         }
 
     override fun onCreate(): Boolean {
@@ -54,43 +64,34 @@ class SharedDatabaseProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor? {
-        val pkg = caller()
         return when (matcher.match(uri)) {
             COLLECTIONS -> {
-                db.logAccess(
-                    pkg,
-                    SharedDatabaseHelper.ACTION_QUERY_COLLECTIONS,
-                    null,
-                    null,
-                )
-                val cursor = MatrixCursor(
-                    arrayOf(SharedDatabaseContract.Columns.COLLECTION),
-                )
-                for (name in db.listCollectionNames()) {
-                    cursor.addRow(arrayOf(name))
+                val cursor = MatrixCursor(COLLECTIONS_COLUMNS)
+                for (row in db.listCollectionsDetailed()) {
+                    cursor.addRow(
+                        arrayOf(
+                            row["name"],
+                            row["createdAt"],
+                            row["createdByPackage"],
+                            row["recordCount"],
+                        ),
+                    )
                 }
                 cursor
             }
 
             RECORDS -> {
                 val collection = uri.pathSegments[1]
-                db.logAccess(
-                    pkg,
-                    SharedDatabaseHelper.ACTION_QUERY_RECORDS,
-                    collection,
-                    null,
-                )
-                val cursor = MatrixCursor(
-                    arrayOf(
-                        SharedDatabaseContract.Columns.ID,
-                        SharedDatabaseContract.Columns.DATA,
-                    ),
-                )
+                val cursor = MatrixCursor(RECORD_COLUMNS)
                 for (row in db.getRecords(collection)) {
                     cursor.addRow(
                         arrayOf(
                             row[SharedDatabaseContract.Columns.ID],
                             row[SharedDatabaseContract.Columns.DATA],
+                            row[SharedDatabaseContract.Columns.CREATED_AT],
+                            row[SharedDatabaseContract.Columns.UPDATED_AT],
+                            row[SharedDatabaseContract.Columns.CREATED_BY],
+                            row[SharedDatabaseContract.Columns.UPDATED_BY],
                         ),
                     )
                 }
@@ -100,25 +101,38 @@ class SharedDatabaseProvider : ContentProvider() {
             RECORD -> {
                 val collection = uri.pathSegments[1]
                 val id = uri.pathSegments[3]
-                db.logAccess(
-                    pkg,
-                    SharedDatabaseHelper.ACTION_QUERY_RECORD,
-                    collection,
-                    id,
-                )
                 val row = db.getRecord(collection, id) ?: return null
-                val cursor = MatrixCursor(
-                    arrayOf(
-                        SharedDatabaseContract.Columns.ID,
-                        SharedDatabaseContract.Columns.DATA,
-                    ),
-                )
+                val cursor = MatrixCursor(RECORD_COLUMNS)
                 cursor.addRow(
                     arrayOf(
                         row[SharedDatabaseContract.Columns.ID],
                         row[SharedDatabaseContract.Columns.DATA],
+                        row[SharedDatabaseContract.Columns.CREATED_AT],
+                        row[SharedDatabaseContract.Columns.UPDATED_AT],
+                        row[SharedDatabaseContract.Columns.CREATED_BY],
+                        row[SharedDatabaseContract.Columns.UPDATED_BY],
                     ),
                 )
+                cursor
+            }
+
+            PREFERENCES -> {
+                val cursor = MatrixCursor(
+                    arrayOf(SharedDatabaseContract.Columns.KEY),
+                )
+                for (key in db.listPreferenceKeys()) {
+                    cursor.addRow(arrayOf(key))
+                }
+                cursor
+            }
+
+            PREFERENCE -> {
+                val key = uri.lastPathSegment ?: return null
+                val value = db.getPreferenceValue(key) ?: return null
+                val cursor = MatrixCursor(
+                    arrayOf(SharedDatabaseContract.Columns.VALUE),
+                )
+                cursor.addRow(arrayOf(value))
                 cursor
             }
 
@@ -127,6 +141,30 @@ class SharedDatabaseProvider : ContentProvider() {
     }
 
     override fun getType(uri: Uri): String? = null
+
+    override fun call(
+        method: String,
+        arg: String?,
+        extras: android.os.Bundle?,
+    ): android.os.Bundle? {
+        val pkg = caller()
+        return when (method) {
+            "renameCollection" -> {
+                val from = extras?.getString("from") ?: return null
+                val to = extras.getString("to") ?: return null
+                db.renameCollection(from, to, pkg)
+                android.os.Bundle()
+            }
+
+            "deleteCollection" -> {
+                val name = extras?.getString("name") ?: return null
+                db.deleteCollection(name, pkg)
+                android.os.Bundle()
+            }
+
+            else -> super.call(method, arg, extras)
+        }
+    }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         values ?: return null
@@ -143,10 +181,18 @@ class SharedDatabaseProvider : ContentProvider() {
                 val id = values.getAsString(SharedDatabaseContract.Columns.ID)
                     ?: UUID.randomUUID().toString()
                 val data = values.getAsString(SharedDatabaseContract.Columns.DATA) ?: "{}"
-                db.insertRecord(collection, id, data, pkg)
+                db.upsertRecord(collection, id, data, pkg)
                 Uri.parse(
                     "content://${SharedDatabaseContract.AUTHORITY}/collections/$collection/records/$id",
                 )
+            }
+
+            PREFERENCE -> {
+                val key = uri.lastPathSegment ?: return null
+                val value = values.getAsString(SharedDatabaseContract.Columns.VALUE)
+                    ?: return null
+                db.setPreferenceValue(key, value, pkg)
+                uri
             }
 
             else -> null
@@ -159,6 +205,17 @@ class SharedDatabaseProvider : ContentProvider() {
                 val collection = uri.pathSegments[1]
                 val id = uri.pathSegments[3]
                 db.deleteRecord(collection, id, caller())
+            }
+
+            RECORDS -> {
+                val collection = uri.pathSegments[1]
+                db.deleteAllRecords(collection, caller())
+            }
+
+            PREFERENCE -> {
+                val key = uri.lastPathSegment ?: return 0
+                db.removePreference(key, caller())
+                1
             }
 
             else -> 0
@@ -187,6 +244,14 @@ class SharedDatabaseProvider : ContentProvider() {
                 1
             }
 
+            PREFERENCE -> {
+                val key = uri.lastPathSegment ?: return 0
+                val value = values.getAsString(SharedDatabaseContract.Columns.VALUE)
+                    ?: return 0
+                db.setPreferenceValue(key, value, pkg)
+                1
+            }
+
             else -> 0
         }
     }
@@ -196,5 +261,23 @@ class SharedDatabaseProvider : ContentProvider() {
         private const val COLLECTION = 2
         private const val RECORDS = 3
         private const val RECORD = 4
+        private const val PREFERENCES = 5
+        private const val PREFERENCE = 6
+
+        private val COLLECTIONS_COLUMNS = arrayOf(
+            SharedDatabaseContract.Columns.COLLECTION,
+            SharedDatabaseContract.Columns.CREATED_AT,
+            SharedDatabaseContract.Columns.CREATED_BY,
+            SharedDatabaseContract.Columns.RECORD_COUNT,
+        )
+
+        private val RECORD_COLUMNS = arrayOf(
+            SharedDatabaseContract.Columns.ID,
+            SharedDatabaseContract.Columns.DATA,
+            SharedDatabaseContract.Columns.CREATED_AT,
+            SharedDatabaseContract.Columns.UPDATED_AT,
+            SharedDatabaseContract.Columns.CREATED_BY,
+            SharedDatabaseContract.Columns.UPDATED_BY,
+        )
     }
 }

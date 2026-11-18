@@ -7,8 +7,8 @@ abstract final class Brand {
   static const Color splashBackground = Color(0xFF0F172A);
   static const String splashImage = 'assets/splash.png';
   static const String appIcon = 'assets/app_icon.png';
-  static const String appName = 'Database';
-  static const String tagline = 'Shared database host';
+  static const String appName = 'SharedDB';
+  static const String tagline = 'Shared database console';
 
   static const double splashLogoSize = 128;
   static const double markSizeDefault = 40;
