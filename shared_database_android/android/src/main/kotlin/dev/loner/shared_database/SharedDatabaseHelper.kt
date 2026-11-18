@@ -6,8 +6,10 @@ import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONException
 import org.json.JSONObject
 
-class SharedDatabaseHelper(context: Context) :
-    SQLiteOpenHelper(context, SharedDatabaseContract.DB_NAME, null, DB_VERSION) {
+class SharedDatabaseHelper(
+    context: Context,
+    databasePath: String,
+) : SQLiteOpenHelper(context, databasePath, null, DB_VERSION) {
 
     private val appContext = context.applicationContext
 
@@ -19,6 +21,7 @@ class SharedDatabaseHelper(context: Context) :
         super.onConfigure(db)
         db.setForeignKeyConstraintsEnabled(true)
         db.enableWriteAheadLogging()
+        db.execSQL("PRAGMA busy_timeout = 5000")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -506,15 +509,7 @@ class SharedDatabaseHelper(context: Context) :
     companion object {
         const val DB_VERSION = 3
 
-        @Volatile
-        private var instance: SharedDatabaseHelper? = null
-
-        fun getInstance(context: Context): SharedDatabaseHelper {
-            return instance ?: synchronized(this) {
-                instance ?: SharedDatabaseHelper(
-                    context.applicationContext,
-                ).also { instance = it }
-            }
-        }
+        fun getInstance(context: Context): SharedDatabaseHelper =
+            SharedDatabaseStore.open(context)
     }
 }

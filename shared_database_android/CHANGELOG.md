@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- Direct shared Documents file only (`SharedDatabaseStore`). Removed host election, registry, and `SharedDatabaseProvider`.
+
 ## 0.2.0
 
 ### Changed

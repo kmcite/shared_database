@@ -46,8 +46,8 @@ class SharedDatabase {
   // — Setup —
 
   /// Connects to the shared database. Every API method works for every app —
-  /// the native side routes through the host's ContentProvider on Android and
-  /// the shared file under ProgramData on Windows.
+  /// on Android every app opens the same file under public Documents; on Windows
+  /// it uses the shared file under ProgramData.
   ///
   /// Throws [SharedDatabaseException] when the native plugin is not linked.
   static Future<SharedDatabase> open() async {

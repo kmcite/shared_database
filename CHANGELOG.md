@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.0+6
+
+### Changed
+
+- **Android** — single shared file under `Documents/dev.loner.shared_database/shared.db`; removed host election, registry, and ContentProvider. All apps open the same path (WAL + `busy_timeout`).
+- **Repo** — library-only layout; nested `companion/` removed (use the standalone `companion` app in the monorepo).
+- **Docs** — README oriented around adding the package to any Flutter project.
+
+## 1.4.0+5
+
+### Changed
+
+- **Repo layout** — root package is library-only (`lib/src/`, platform federated plugins); installable host console and platform runners moved to `companion/` (package `companion`, app id `dev.loner.companion`).
+
 ## 1.4.0
 
 ### Changed

@@ -1,9 +1,9 @@
 # shared_database_android
 
-Android implementation for the `shared_database` plugin.
+Android backend for `shared_database`.
 
-Speaks the Pigeon-generated `SharedDatabaseApi` contract (`SharedDatabaseApi.g.kt`) and exposes the shared SQLite database through a `ContentProvider` at `content://dev.loner.shared_database`.
+- **One file** — `Documents/dev.loner.shared_database/shared.db` on primary storage (same absolute path in every app).
+- **No host election** — each app opens that file via `SharedDatabaseStore` + `SharedDatabaseHelper` (WAL, `busy_timeout`).
+- **No ContentProvider** — nothing to install besides your own APKs.
 
-- `SharedDatabaseHelper` — SQLiteOpenHelper (schema v3: `collections`, `records`, `preferences`, WAL).
-- `SharedDatabaseProvider` — serves `collections`, `collections/*/records[/*]`, `preferences`, `preferences/*`, and `call()` for collection rename/delete.
-- `SharedDatabasePlugin` — implements the generated Kotlin `SharedDatabaseApi`. Auto-detects the provider's app by package name: inside it uses the helper directly, everywhere else it goes through `ContentResolver`.
+Add the Flutter dependency and call `SharedDatabase.open()`.
