@@ -25,6 +25,9 @@ class SharedDatabaseHelper(
         db.rawQuery("PRAGMA busy_timeout = 5000", null).use { cursor ->
             cursor.moveToFirst()
         }
+        db.rawQuery("PRAGMA synchronous = NORMAL", null).use { cursor ->
+            cursor.moveToFirst()
+        }
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -33,6 +36,11 @@ class SharedDatabaseHelper(
         }
         if (oldVersion < 3) {
             createPreferencesTable(db)
+        }
+        if (oldVersion < 4) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_records_collection_updated ON records(collection, updated_at DESC)",
+            )
         }
     }
 
@@ -63,6 +71,9 @@ class SharedDatabaseHelper(
         )
         db.execSQL(
             "CREATE INDEX idx_records_collection ON records(collection)",
+        )
+        db.execSQL(
+            "CREATE INDEX idx_records_collection_updated ON records(collection, updated_at DESC)",
         )
         createPreferencesTable(db)
     }
@@ -510,7 +521,7 @@ class SharedDatabaseHelper(
     }
 
     companion object {
-        const val DB_VERSION = 3
+        const val DB_VERSION = 4
 
         fun getInstance(context: Context): SharedDatabaseHelper =
             SharedDatabaseStore.open(context)

@@ -22,8 +22,8 @@ list(APPEND PLUGIN_SOURCES
   "shared_database_windows_plugin.h"
   "shared_database_api.g.cpp"
   "shared_database_api.g.h"
-  "database_store.cpp"
-  "database_store.h"
+  "shared_database_helper.cpp"
+  "shared_database_helper.h"
 )
 
 include(FetchContent)
@@ -38,7 +38,7 @@ add_library(sqlite3 STATIC "${sqlite_amalgamation_SOURCE_DIR}/sqlite3.c")
 target_include_directories(sqlite3 PUBLIC "${sqlite_amalgamation_SOURCE_DIR}")
 target_compile_definitions(sqlite3 PRIVATE SQLITE_OMIT_LOAD_EXTENSION)
 
-# nlohmann/json single header (used by database_store.cpp for JSON patching).
+# nlohmann/json single header (used by shared_database_helper.cpp for JSON patching).
 set(NLOHMANN_JSON_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/nlohmann_json")
 set(NLOHMANN_JSON_HEADER "${NLOHMANN_JSON_INCLUDE_DIR}/nlohmann/json.hpp")
 if(NOT EXISTS "${NLOHMANN_JSON_HEADER}")

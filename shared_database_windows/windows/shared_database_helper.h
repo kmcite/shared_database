@@ -1,5 +1,5 @@
-#ifndef SHARED_DATABASE_DATABASE_STORE_H_
-#define SHARED_DATABASE_DATABASE_STORE_H_
+#ifndef SHARED_DATABASE_SHARED_DATABASE_HELPER_H_
+#define SHARED_DATABASE_SHARED_DATABASE_HELPER_H_
 
 #include <cstdint>
 #include <map>
@@ -35,9 +35,9 @@ struct RecordWatchToken {
   int64_t updated_at = 0;
 };
 
-class DatabaseStore {
+class SharedDatabaseHelper {
  public:
-  static DatabaseStore& Instance();
+  static SharedDatabaseHelper& Instance();
 
   void Initialize(const std::string& authority, bool is_host,
                   const std::string& caller_package);
@@ -85,7 +85,7 @@ class DatabaseStore {
   void DeleteCollection(const std::string& name);
 
  private:
-  DatabaseStore() = default;
+  SharedDatabaseHelper() = default;
 
   void OpenDatabase();
   void EnsureSchema();
@@ -109,4 +109,4 @@ class DatabaseStore {
 
 }  // namespace shared_database_windows
 
-#endif  // SHARED_DATABASE_DATABASE_STORE_H_
+#endif  // SHARED_DATABASE_SHARED_DATABASE_HELPER_H_

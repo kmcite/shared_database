@@ -281,14 +281,14 @@ packages:
       path: shared_database_android
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.5.0"
   shared_database_windows:
     dependency: "direct main"
     description:
       path: shared_database_windows
       relative: true
     source: path
-    version: "0.2.0"
+    version: "0.3.0"
   sky_engine:
     dependency: transitive
     description: flutter

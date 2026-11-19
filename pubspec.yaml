@@ -2,7 +2,7 @@ name: shared_database
 description: >
   Importable Flutter plugin — shared on-device SQLite with collection CRUD for
   your apps on Android and Windows.
-version: 1.6.0+7
+version: 1.7.0+8
 publish_to: 'none'
 
 environment:

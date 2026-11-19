@@ -1,4 +1,4 @@
-#include "database_store.h"
+#include "shared_database_helper.h"
 
 #include <ShlObj.h>
 #include <windows.h>
@@ -16,7 +16,7 @@
 namespace shared_database_windows {
 namespace {
 
-constexpr int kDbVersion = 3;
+constexpr int kDbVersion = 4;
 constexpr const char* kDbFileName = "shared.db";
 constexpr const char* kPreferencesTableSql =
     "CREATE TABLE IF NOT EXISTS preferences ("
@@ -81,12 +81,12 @@ void SqlCheck(int rc, sqlite3* db, const char* context) {
 
 }  // namespace
 
-DatabaseStore& DatabaseStore::Instance() {
-  static DatabaseStore instance;
+SharedDatabaseHelper& SharedDatabaseHelper::Instance() {
+  static SharedDatabaseHelper instance;
   return instance;
 }
 
-void DatabaseStore::Initialize(const std::string& authority, bool is_host,
+void SharedDatabaseHelper::Initialize(const std::string& authority, bool is_host,
                                const std::string& caller_package) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (initialized_ && authority_ == authority && is_host_ == is_host) {
@@ -113,10 +113,7 @@ void DatabaseStore::Initialize(const std::string& authority, bool is_host,
   }
 
   const bool db_exists = std::filesystem::exists(db_path_);
-  if (!is_host_ && !db_exists) {
-    throw std::runtime_error(
-        "Cannot reach the shared database host. Run the manager app first.");
-  }
+  (void)db_exists;
 
   if (is_host_) {
     host_package_ = caller_package_;
@@ -128,20 +125,23 @@ void DatabaseStore::Initialize(const std::string& authority, bool is_host,
   initialized_ = true;
 }
 
-void DatabaseStore::OpenDatabase() {
+void SharedDatabaseHelper::OpenDatabase() {
   if (db_) {
     sqlite3_close(db_);
     db_ = nullptr;
   }
   SqlCheck(sqlite3_open(db_path_.c_str(), &db_), db_, "open database");
+  SqlCheck(sqlite3_busy_timeout(db_, 5000), db_, "busy_timeout");
   SqlCheck(sqlite3_exec(db_, "PRAGMA foreign_keys=ON;", nullptr, nullptr, nullptr),
            db_, "foreign_keys");
   SqlCheck(sqlite3_exec(db_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr),
            db_, "wal");
+  SqlCheck(sqlite3_exec(db_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr),
+           db_, "synchronous");
   EnsureSchema();
 }
 
-void DatabaseStore::EnsureSchema() {
+void SharedDatabaseHelper::EnsureSchema() {
   const int version = UserVersion();
   if (version == 0) {
     SqlCheck(sqlite3_exec(db_,
@@ -169,6 +169,10 @@ void DatabaseStore::EnsureSchema() {
                           "CREATE INDEX idx_records_collection ON records(collection);",
                           nullptr, nullptr, nullptr),
              db_, "idx records");
+    SqlCheck(sqlite3_exec(db_,
+                          "CREATE INDEX idx_records_collection_updated ON records(collection, updated_at DESC);",
+                          nullptr, nullptr, nullptr),
+             db_, "idx records updated");
     SqlCheck(sqlite3_exec(db_, kPreferencesTableSql, nullptr, nullptr, nullptr),
              db_, "create preferences");
     SetUserVersion(kDbVersion);
@@ -178,7 +182,7 @@ void DatabaseStore::EnsureSchema() {
   }
 }
 
-void DatabaseStore::RunMigrations(int old_version) {
+void SharedDatabaseHelper::RunMigrations(int old_version) {
   if (old_version < 2) {
     SqlCheck(sqlite3_exec(
                  db_,
@@ -201,9 +205,17 @@ void DatabaseStore::RunMigrations(int old_version) {
   }
   SqlCheck(sqlite3_exec(db_, kPreferencesTableSql, nullptr, nullptr, nullptr),
            db_, "migrate preferences");
+  if (old_version < 4) {
+    SqlCheck(sqlite3_exec(
+                 db_,
+                 "CREATE INDEX IF NOT EXISTS idx_records_collection_updated "
+                 "ON records(collection, updated_at DESC);",
+                 nullptr, nullptr, nullptr),
+             db_, "migrate index collection updated");
+  }
 }
 
-int DatabaseStore::UserVersion() {
+int SharedDatabaseHelper::UserVersion() {
   sqlite3_stmt* stmt = nullptr;
   SqlCheck(sqlite3_prepare_v2(db_, "PRAGMA user_version;", -1, &stmt, nullptr), db_,
            "user_version prepare");
@@ -215,14 +227,14 @@ int DatabaseStore::UserVersion() {
   return version;
 }
 
-void DatabaseStore::SetUserVersion(int version) {
+void SharedDatabaseHelper::SetUserVersion(int version) {
   std::ostringstream sql;
   sql << "PRAGMA user_version = " << version << ";";
   SqlCheck(sqlite3_exec(db_, sql.str().c_str(), nullptr, nullptr, nullptr), db_,
            "set user_version");
 }
 
-void DatabaseStore::EnsureCollectionUnlocked(const std::string& name) {
+void SharedDatabaseHelper::EnsureCollectionUnlocked(const std::string& name) {
   sqlite3_stmt* stmt = nullptr;
   SqlCheck(sqlite3_prepare_v2(db_,
                               "INSERT OR IGNORE INTO collections "
@@ -239,12 +251,12 @@ void DatabaseStore::EnsureCollectionUnlocked(const std::string& name) {
   SqlCheck(rc, db_, "ensure collection step");
 }
 
-void DatabaseStore::EnsureCollection(const std::string& name) {
+void SharedDatabaseHelper::EnsureCollection(const std::string& name) {
   std::lock_guard<std::mutex> lock(mutex_);
   EnsureCollectionUnlocked(name);
 }
 
-std::vector<std::string> DatabaseStore::ListCollectionNames() {
+std::vector<std::string> SharedDatabaseHelper::ListCollectionNames() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   std::vector<std::string> names;
@@ -259,7 +271,7 @@ std::vector<std::string> DatabaseStore::ListCollectionNames() {
   return names;
 }
 
-std::vector<CollectionDetail> DatabaseStore::ListCollectionsDetailed() {
+std::vector<CollectionDetail> SharedDatabaseHelper::ListCollectionsDetailed() {
   std::lock_guard<std::mutex> lock(mutex_);
   std::vector<CollectionDetail> rows;
   sqlite3_stmt* stmt = nullptr;
@@ -283,7 +295,7 @@ std::vector<CollectionDetail> DatabaseStore::ListCollectionsDetailed() {
   return rows;
 }
 
-std::string DatabaseStore::UpsertRecord(const std::string& collection,
+std::string SharedDatabaseHelper::UpsertRecord(const std::string& collection,
                                         const std::string& id,
                                         const std::string& data) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -313,7 +325,7 @@ std::string DatabaseStore::UpsertRecord(const std::string& collection,
   return id;
 }
 
-std::vector<std::string> DatabaseStore::UpsertRecords(
+std::vector<std::string> SharedDatabaseHelper::UpsertRecords(
     const std::string& collection,
     const std::vector<std::pair<std::string, std::string>>& items) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -357,7 +369,7 @@ std::vector<std::string> DatabaseStore::UpsertRecords(
   return ids;
 }
 
-std::string DatabaseStore::PatchRecord(const std::string& collection,
+std::string SharedDatabaseHelper::PatchRecord(const std::string& collection,
                                        const std::string& id,
                                        const std::string& patch_json) {
   // GetRecord/UpdateRecord take the mutex themselves; the read-modify-write
@@ -387,7 +399,7 @@ std::string DatabaseStore::PatchRecord(const std::string& collection,
   return id;
 }
 
-std::vector<RecordRow> DatabaseStore::GetRecords(
+std::vector<RecordRow> SharedDatabaseHelper::GetRecords(
     const std::string& collection, std::optional<int64_t> limit,
     std::optional<int64_t> offset) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -428,7 +440,7 @@ std::vector<RecordRow> DatabaseStore::GetRecords(
   return rows;
 }
 
-std::optional<RecordRow> DatabaseStore::GetRecord(
+std::optional<RecordRow> SharedDatabaseHelper::GetRecord(
     const std::string& collection, const std::string& id) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
@@ -459,7 +471,7 @@ std::optional<RecordRow> DatabaseStore::GetRecord(
   return row;
 }
 
-void DatabaseStore::UpdateRecord(const std::string& collection,
+void SharedDatabaseHelper::UpdateRecord(const std::string& collection,
                                  const std::string& id, const std::string& data) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
@@ -479,7 +491,7 @@ void DatabaseStore::UpdateRecord(const std::string& collection,
 
 }
 
-void DatabaseStore::DeleteRecord(const std::string& collection,
+void SharedDatabaseHelper::DeleteRecord(const std::string& collection,
                                  const std::string& id) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
@@ -493,7 +505,7 @@ void DatabaseStore::DeleteRecord(const std::string& collection,
   sqlite3_finalize(stmt);
 }
 
-int DatabaseStore::DeleteAllRecords(const std::string& collection) {
+int SharedDatabaseHelper::DeleteAllRecords(const std::string& collection) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
   SqlCheck(sqlite3_prepare_v2(db_,
@@ -507,7 +519,7 @@ int DatabaseStore::DeleteAllRecords(const std::string& collection) {
   return deleted;
 }
 
-void DatabaseStore::RenameCollection(const std::string& from,
+void SharedDatabaseHelper::RenameCollection(const std::string& from,
                                      const std::string& to) {
   if (from == to) return;
   std::lock_guard<std::mutex> lock(mutex_);
@@ -569,7 +581,7 @@ void DatabaseStore::RenameCollection(const std::string& from,
   }
 }
 
-void DatabaseStore::DeleteCollection(const std::string& name) {
+void SharedDatabaseHelper::DeleteCollection(const std::string& name) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
   SqlCheck(sqlite3_prepare_v2(db_, "DELETE FROM collections WHERE name = ?;", -1,
@@ -584,7 +596,7 @@ void DatabaseStore::DeleteCollection(const std::string& name) {
   sqlite3_finalize(stmt);
 }
 
-std::map<std::string, int64_t> DatabaseStore::GetCollectionsWatchToken() {
+std::map<std::string, int64_t> SharedDatabaseHelper::GetCollectionsWatchToken() {
   std::lock_guard<std::mutex> lock(mutex_);
   std::map<std::string, int64_t> token;
   int64_t count = 0;
@@ -607,7 +619,7 @@ std::map<std::string, int64_t> DatabaseStore::GetCollectionsWatchToken() {
   return token;
 }
 
-std::map<std::string, int64_t> DatabaseStore::GetCollectionWatchToken(
+std::map<std::string, int64_t> SharedDatabaseHelper::GetCollectionWatchToken(
     const std::string& collection) {
   std::lock_guard<std::mutex> lock(mutex_);
   std::map<std::string, int64_t> token;
@@ -627,7 +639,7 @@ std::map<std::string, int64_t> DatabaseStore::GetCollectionWatchToken(
   return token;
 }
 
-RecordWatchToken DatabaseStore::GetRecordWatchToken(const std::string& collection,
+RecordWatchToken SharedDatabaseHelper::GetRecordWatchToken(const std::string& collection,
                                                     const std::string& id) {
   std::lock_guard<std::mutex> lock(mutex_);
   RecordWatchToken token;
@@ -647,7 +659,7 @@ RecordWatchToken DatabaseStore::GetRecordWatchToken(const std::string& collectio
   return token;
 }
 
-std::optional<std::string> DatabaseStore::GetPreferenceValue(
+std::optional<std::string> SharedDatabaseHelper::GetPreferenceValue(
     const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
@@ -665,7 +677,7 @@ std::optional<std::string> DatabaseStore::GetPreferenceValue(
   return value;
 }
 
-void DatabaseStore::SetPreferenceValue(const std::string& key,
+void SharedDatabaseHelper::SetPreferenceValue(const std::string& key,
                                        const std::string& value) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
@@ -686,7 +698,7 @@ void DatabaseStore::SetPreferenceValue(const std::string& key,
   sqlite3_finalize(stmt);
 }
 
-void DatabaseStore::RemovePreference(const std::string& key) {
+void SharedDatabaseHelper::RemovePreference(const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   sqlite3_stmt* stmt = nullptr;
   SqlCheck(sqlite3_prepare_v2(db_, "DELETE FROM preferences WHERE key = ?;",
@@ -697,7 +709,7 @@ void DatabaseStore::RemovePreference(const std::string& key) {
   sqlite3_finalize(stmt);
 }
 
-std::vector<std::string> DatabaseStore::ListPreferenceKeys() {
+std::vector<std::string> SharedDatabaseHelper::ListPreferenceKeys() {
   std::lock_guard<std::mutex> lock(mutex_);
   std::vector<std::string> keys;
   sqlite3_stmt* stmt = nullptr;
@@ -712,7 +724,7 @@ std::vector<std::string> DatabaseStore::ListPreferenceKeys() {
   return keys;
 }
 
-RecordWatchToken DatabaseStore::GetPreferenceWatchToken(
+RecordWatchToken SharedDatabaseHelper::GetPreferenceWatchToken(
     const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   RecordWatchToken token;

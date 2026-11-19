@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.0+8
+
+### Changed
+- **Windows** — aligned architecture and class naming: renamed DatabaseStore to SharedDatabaseHelper (shared_database_helper.h / shared_database_helper.cpp), matching Android's SharedDatabaseHelper.
+- **Peer-to-peer Windows** — removed host-dependency initialization requirement; any app can start first and bootstrap %ProgramData%\dev.loner.shared_database\shared.db.
+- **Performance & Concurrency** — configured PRAGMA synchronous = NORMAL across Android and Windows in SQLite WAL mode; added 5000ms busy timeout on Windows.
+- **Indexing (Schema v4)** — added compound index idx_records_collection_updated ON records(collection, updated_at DESC) for high-performance sorting and O(log N) watch token polling.
+
+## 1.6.0+7
+
+### Changed
+- **Storage** — library-owned storage access and zero-configuration permission handling on Android.
+
 ## 1.5.0+6
 
 ### Changed
