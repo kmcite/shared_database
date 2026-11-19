@@ -61,6 +61,13 @@ class SharedDatabase {
 
   static Future<void> _initialize() async {
     try {
+      final allowed = await _api.prepareStorageAccess();
+      if (!allowed) {
+        throw SharedDatabaseException(
+          'Storage access was denied. Allow storage (and “all files” on Android 11+) '
+          'so the app can use Documents/dev.loner.shared_database/shared.db.',
+        );
+      }
       await _invokeWrite<void>(() => _api.initialize());
     } on MissingPluginException catch (e) {
       throw SharedDatabaseException(
@@ -68,6 +75,11 @@ class SharedDatabase {
         'dev.flutter.pigeon.shared_database.SharedDatabaseApi). '
         'Add shared_database to pubspec, run flutter pub get, then rebuild '
         'for your platform (apk / windows).',
+        cause: e,
+      );
+    } on PlatformException catch (e) {
+      throw SharedDatabaseException(
+        e.message ?? 'Native storage setup failed.',
         cause: e,
       );
     }

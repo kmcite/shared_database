@@ -25,6 +25,9 @@ class SharedDatabaseWindowsPlugin final
 
   // — shared_database_windows_pigeon::SharedDatabaseApi —
 
+  void PrepareStorageAccess(
+      std::function<void(shared_database_windows_pigeon::ErrorOr<bool>)> result)
+      override;
   std::optional<shared_database_windows_pigeon::FlutterError> Initialize() override;
   std::optional<shared_database_windows_pigeon::FlutterError> EnsureCollection(
       const std::string &name) override;

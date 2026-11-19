@@ -17,14 +17,17 @@ object SharedDatabasePaths {
 
     private fun documentsRoot(context: Context): File {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val storageManager =
-                context.getSystemService(StorageManager::class.java)
-                    ?: throw IOException("StorageManager unavailable")
-            val root = storageManager.primaryStorageVolume.directory
-                ?: throw IOException("Primary storage unavailable")
-            return File(root, Environment.DIRECTORY_DOCUMENTS)
+            val storageManager = context.getSystemService(StorageManager::class.java)
+            val root = storageManager?.primaryStorageVolume?.directory
+            if (root != null) {
+                return File(root, Environment.DIRECTORY_DOCUMENTS)
+            }
         }
         @Suppress("DEPRECATION")
-        return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        val legacy = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        if (!legacy.path.isNullOrEmpty()) {
+            return legacy
+        }
+        throw IOException("Primary storage unavailable")
     }
 }

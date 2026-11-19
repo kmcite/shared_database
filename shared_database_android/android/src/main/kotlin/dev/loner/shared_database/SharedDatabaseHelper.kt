@@ -21,7 +21,10 @@ class SharedDatabaseHelper(
         super.onConfigure(db)
         db.setForeignKeyConstraintsEnabled(true)
         db.enableWriteAheadLogging()
-        db.execSQL("PRAGMA busy_timeout = 5000")
+        // PRAGMA busy_timeout returns a row; execSQL rejects those on Android.
+        db.rawQuery("PRAGMA busy_timeout = 5000", null).use { cursor ->
+            cursor.moveToFirst()
+        }
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

@@ -65,6 +65,11 @@ SharedDatabaseWindowsPlugin::SharedDatabaseWindowsPlugin() {}
 
 SharedDatabaseWindowsPlugin::~SharedDatabaseWindowsPlugin() {}
 
+void SharedDatabaseWindowsPlugin::PrepareStorageAccess(
+    std::function<void(ErrorOr<bool>)> result) {
+  result(true);
+}
+
 std::optional<FlutterError> SharedDatabaseWindowsPlugin::Initialize() {
   DatabaseStore::Instance().Initialize("dev.loner.shared_database",
                                        /*is_host=*/true, "");

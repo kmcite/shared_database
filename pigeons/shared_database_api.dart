@@ -19,6 +19,11 @@ import 'package:pigeon/pigeon.dart';
 )
 @HostApi()
 abstract class SharedDatabaseApi {
+  /// Android: runtime storage / all-files access for the shared Documents path.
+  /// Windows: no-op (always true).
+  @async
+  bool prepareStorageAccess();
+
   void initialize();
 
   // — Collections (Console UI & Setup) —

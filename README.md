@@ -2,7 +2,13 @@
 
 One SQLite database on the device, shared across your Flutter apps on **Android** and **Windows**.
 
-Add the package → call `SharedDatabase.open()` → use the API. No companion app, no host election, no manifest edits.
+Add the package → call `SharedDatabase.open()` → use the API. No companion app, no host election, **no storage code or manifest edits in your app** — Android permissions live in `shared_database_android` and merge into your APK automatically.
+
+**Checklist**
+
+1. `shared_database` in `pubspec.yaml` (path or [GitHub](#1-dependency)).
+2. `WidgetsFlutterBinding.ensureInitialized()` then `await SharedDatabase.open()`.
+3. `flutter run` — accept the Android storage prompt once if shown.
 
 ---
 
@@ -18,15 +24,28 @@ Add the package → call `SharedDatabase.open()` → use the API. No companion a
 
 ### 1. Dependency
 
+**Local path** (monorepo / sibling folder):
+
 ```yaml
 dependencies:
   shared_database:
-    path: ../shared_database   # or git: url / ref
+    path: ../shared_database
+```
+
+**GitHub** (any Flutter project with Git installed):
+
+```yaml
+dependencies:
+  shared_database:
+    git:
+      url: https://github.com/kmcite/shared_database.git
 ```
 
 ```bash
 flutter pub get
 ```
+
+`pub get` pulls the repo and resolves embedded platform packages (`shared_database_android`, `shared_database_windows`) from that checkout — no extra steps.
 
 ### 2. Initialize
 
@@ -78,11 +97,33 @@ There is **no** special host app and **no** “open app X first” rule. Uninsta
 - Dart: writes in a single app are serialized (`_invokeWrite`); reads can overlap.
 - Across apps: multiple processes hit the same file — normal SQLite locking applies (many readers, writes serialized at the database).
 
-**You do not add**
+**Host app: nothing extra**
 
-- ContentProvider entries in your manifest (none in this plugin).
-- Storage permission flows or “all files access” (empty plugin manifest).
-- A separate installer / companion APK.
+| Skip in your app | Why |
+|------------------|-----|
+| Storage permissions in `AndroidManifest.xml` | Declared in **`shared_database_android`** and merged by Gradle |
+| `permission_handler` / custom storage UI | Plugin runs `prepareStorageAccess()` before opening the DB |
+| ContentProvider wiring | Not used — direct file on shared storage |
+| Companion / host APK | Any app with this dependency shares the same file |
+
+### Android storage (all in the library)
+
+| What | Where |
+|------|--------|
+| Manifest permissions | `shared_database_android/android/src/main/AndroidManifest.xml` (merged into host app) |
+| Runtime prompts | `SharedDatabaseStorageAccess` + `SharedDatabasePlugin` (`ActivityAware`) |
+| Trigger | First `await SharedDatabase.open()` while the app has a foreground `Activity` |
+
+**Flow when you call `SharedDatabase.open()`**
+
+1. **Dart** — `prepareStorageAccess()` then `initialize()`.
+2. **Android ≤ 10** — system dialog for **Read/Write storage** if still needed.
+3. **Android 11+** — if the shared Documents path is not usable yet, the plugin opens system **All files access** for your app (`MANAGE_EXTERNAL_STORAGE`); grant it once per app that uses this package.
+4. **Direct file** — `Documents/dev.loner.shared_database/shared.db` (same path in Shop, Companion, or any other dependent).
+
+Install every app that should share data on the **same device**. Each app must pass the prompt once; after that they all read/write the same file (SQLite WAL + `busy_timeout`).
+
+**Play Store note:** “All files access” is a restricted permission for public store listings; fine for sideloaded or internal apps on your own devices.
 
 ---
 
@@ -117,7 +158,7 @@ See earlier sections in your codebase docs or `lib/src/shared_database.dart` for
 
 | Symptom | Action |
 |---------|--------|
-| `STORAGE_UNAVAILABLE` (Android) | Device blocked creating `Documents/dev.loner.shared_database/shared.db`. Check path in error details; free space; retry after another app created the folder. |
+| `STORAGE_UNAVAILABLE` / `STORAGE_PERMISSION` (Android) | Run `open()` while the UI is visible (needs `Activity`). Accept storage / **All files access** when the plugin prompts — do not add permissions in the host app. Delete `Documents/dev.loner.shared_database` and retry if the file was left half-deleted. |
 | `Native plugin not linked` | `flutter pub get`, clean rebuild. |
 | `Call SharedDatabase.open() first` | Await `open()` in `main()` before using `instance`. |
 
@@ -126,7 +167,7 @@ See earlier sections in your codebase docs or `lib/src/shared_database.dart` for
 ## Architecture
 
 - **Dart** — Pigeon `SharedDatabaseApi` (`pigeons/shared_database_api.dart`).
-- **Android** — `SharedDatabasePaths` / `SharedDatabaseFiles` / `SharedDatabaseStore` / `SharedDatabaseHelper`.
+- **Android** — `SharedDatabasePathIo`, `SharedDatabaseStorageAccess`, `SharedDatabasePermissionCoordinator`, `SharedDatabasePaths` / `SharedDatabaseFiles` / `SharedDatabaseStore` / `SharedDatabaseHelper`.
 - **Windows** — `DatabaseStore` under ProgramData.
 
 Schema **v3**: `collections`, `records`, `preferences`.

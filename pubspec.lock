@@ -281,7 +281,7 @@ packages:
       path: shared_database_android
       relative: true
     source: path
-    version: "0.2.0"
+    version: "0.3.0"
   shared_database_windows:
     dependency: "direct main"
     description:

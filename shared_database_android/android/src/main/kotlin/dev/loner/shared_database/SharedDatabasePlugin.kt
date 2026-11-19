@@ -2,13 +2,17 @@ package dev.loner.shared_database
 
 import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import java.util.UUID
 
 class SharedDatabasePlugin :
     FlutterPlugin,
+    ActivityAware,
     SharedDatabaseApi {
 
     private lateinit var appContext: Context
+    private val permissionCoordinator = SharedDatabasePermissionCoordinator()
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
@@ -19,11 +23,41 @@ class SharedDatabasePlugin :
         SharedDatabaseApi.setUp(binding.binaryMessenger, null)
     }
 
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        permissionCoordinator.onAttach(binding)
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        // Activity is reattached immediately; keep coordinator state for in-flight prompts.
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        permissionCoordinator.onAttach(binding)
+    }
+
+    override fun onDetachedFromActivity() {
+        permissionCoordinator.onDetach(fullTeardown = true)
+    }
+
     private fun callerPackage(): String = appContext.packageName
 
     private fun helper(): SharedDatabaseHelper = SharedDatabaseStore.open(appContext)
 
+    override suspend fun prepareStorageAccess(): Boolean =
+        permissionCoordinator.ensureAccess(appContext)
+
     override fun initialize() {
+        if (!SharedDatabaseStorageAccess.hasAccess(appContext)) {
+            throw FlutterError(
+                code = "STORAGE_PERMISSION",
+                message =
+                    "Shared database path is not accessible. Grant storage access when prompted " +
+                    "(prepareStorageAccess must succeed before initialize).",
+                details = mapOf(
+                    "path" to SharedDatabasePathIo.databaseFile(appContext).absolutePath,
+                ),
+            )
+        }
         helper()
     }
 
@@ -144,21 +178,4 @@ class SharedDatabasePlugin :
             forceRefresh = false,
         )
     }
-
-    private fun Map<String, String>.toRecordData(collection: String): RecordData = RecordData(
-        id = this[SharedDatabaseContract.Columns.ID] ?: "",
-        collection = collection,
-        dataJson = this[SharedDatabaseContract.Columns.DATA] ?: "{}",
-        createdAt = this[SharedDatabaseContract.Columns.CREATED_AT]?.toLongOrNull() ?: 0L,
-        updatedAt = this[SharedDatabaseContract.Columns.UPDATED_AT]?.toLongOrNull() ?: 0L,
-        createdBy = this[SharedDatabaseContract.Columns.CREATED_BY] ?: "",
-        updatedBy = this[SharedDatabaseContract.Columns.UPDATED_BY] ?: "",
-    )
-
-    private fun Map<String, Any?>.toCollectionData(): CollectionData = CollectionData(
-        name = this["name"] as? String ?: "",
-        createdAt = (this["createdAt"] as? Number)?.toLong() ?: 0L,
-        createdByPackage = this["createdByPackage"] as? String ?: "",
-        recordCount = (this["recordCount"] as? Number)?.toLong() ?: 0L,
-    )
 }
